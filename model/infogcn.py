@@ -1,3 +1,6 @@
+#  Copyright (c) 2024. IPCRC, Lab. Jiangnig Wei
+#  All rights reserved
+
 import math
 
 import numpy as np
@@ -28,25 +31,25 @@ class InfoGCN(nn.Module):
         self.num_point = num_point
         self.data_bn = nn.BatchNorm1d(num_person * base_channel * num_point)
         self.noise_ratio = noise_ratio
-        self.z_prior = torch.empty(num_class, base_channel*4)
+        self.z_prior = torch.empty(num_class, base_channel * 4)
         self.A_vector = self.get_A(graph, k)
         self.gain = gain
         self.to_joint_embedding = nn.Linear(in_channels, base_channel)
         self.pos_embedding = nn.Parameter(torch.randn(1, self.num_point, base_channel))
 
-        self.l1 = EncodingBlock(base_channel, base_channel,A)
-        self.l2 = EncodingBlock(base_channel, base_channel,A)
-        self.l3 = EncodingBlock(base_channel, base_channel,A)
-        self.l4 = EncodingBlock(base_channel, base_channel*2, A, stride=2)
-        self.l5 = EncodingBlock(base_channel*2, base_channel*2, A)
-        self.l6 = EncodingBlock(base_channel*2, base_channel*2, A)
-        self.l7 = EncodingBlock(base_channel*2, base_channel*4, A, stride=2)
-        self.l8 = EncodingBlock(base_channel*4, base_channel*4, A)
-        self.l9 = EncodingBlock(base_channel*4, base_channel*4, A)
-        self.fc = nn.Linear(base_channel*4, base_channel*4)
-        self.fc_mu = nn.Linear(base_channel*4, base_channel*4)
-        self.fc_logvar = nn.Linear(base_channel*4, base_channel*4)
-        self.decoder = nn.Linear(base_channel*4, num_class)
+        self.l1 = EncodingBlock(base_channel, base_channel, A)
+        self.l2 = EncodingBlock(base_channel, base_channel, A)
+        self.l3 = EncodingBlock(base_channel, base_channel, A)
+        self.l4 = EncodingBlock(base_channel, base_channel * 2, A, stride=2)
+        self.l5 = EncodingBlock(base_channel * 2, base_channel * 2, A)
+        self.l6 = EncodingBlock(base_channel * 2, base_channel * 2, A)
+        self.l7 = EncodingBlock(base_channel * 2, base_channel * 4, A, stride=2)
+        self.l8 = EncodingBlock(base_channel * 4, base_channel * 4, A)
+        self.l9 = EncodingBlock(base_channel * 4, base_channel * 4, A)
+        self.fc = nn.Linear(base_channel * 4, base_channel * 4)
+        self.fc_mu = nn.Linear(base_channel * 4, base_channel * 4)
+        self.fc_logvar = nn.Linear(base_channel * 4, base_channel * 4)
+        self.decoder = nn.Linear(base_channel * 4, num_class)
         nn.init.orthogonal_(self.z_prior, gain=gain)
         nn.init.xavier_uniform_(self.fc.weight, gain=nn.init.calculate_gain('relu'))
         nn.init.xavier_uniform_(self.fc_mu.weight, gain=nn.init.calculate_gain('relu'))
@@ -62,7 +65,7 @@ class InfoGCN(nn.Module):
         Graph = import_class(graph)()
         A_outward = Graph.A_outward_binary
         I = np.eye(Graph.num_node)
-        return  torch.from_numpy(I - np.linalg.matrix_power(A_outward, k))
+        return torch.from_numpy(I - np.linalg.matrix_power(A_outward, k))
 
     def latent_sample(self, mu, logvar):
         if self.training:
@@ -78,7 +81,7 @@ class InfoGCN(nn.Module):
     def forward(self, x):
         N, C, T, V, M = x.size()
         x = rearrange(x, 'n c t v m -> (n m t) v c', m=M, v=V).contiguous()
-        x = self.A_vector.to(x.device).expand(N*M*T, -1, -1) @ x
+        x = torch.tensor(self.A_vector.to(x.device).expand(N * M * T, -1, -1), dtype=torch.float32) @ x
 
         x = self.to_joint_embedding(x)
         x += self.pos_embedding[:, :self.num_point]

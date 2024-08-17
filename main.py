@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+
+#  Copyright (c) 2024. IPCRC, Lab. Jiangnig Wei
+#  All rights reserved
+
 from __future__ import print_function
 
 import os
@@ -12,11 +16,11 @@ import resource
 
 from collections import OrderedDict
 
-import apex
+# import apex
 import torch
 import torch.optim as optim
 import numpy as np
-
+import yaml
 from tqdm import tqdm
 from sklearn.metrics import confusion_matrix
 
@@ -29,6 +33,7 @@ from utils import BalancedSampler as BS
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
 
+
 def init_seed(seed):
     torch.cuda.manual_seed_all(seed)
     torch.manual_seed(seed)
@@ -37,6 +42,7 @@ def init_seed(seed):
     # torch.backends.cudnn.enabled = False
     torch.backends.cudnn.deterministic = False
     torch.backends.cudnn.benchmark = True
+
 
 def import_class(import_str):
     mod_str, _sep, class_str = import_str.rpartition('.')
@@ -80,19 +86,19 @@ class Processor():
 
         # self.model = torch.nn.DataParallel(model, device_ids=(0,1,2))
 
-    def load_data(self):
+    def load_data_(self):
         Feeder = import_class(self.arg.feeder)
         self.data_loader = dict()
         data_path = f'data/{self.arg.dataset}/{self.arg.datacase}_aligned.npz'
         if self.arg.phase == 'train':
             dt = Feeder(data_path=data_path,
-                split='train',
-                window_size=64,
-                p_interval=[0.5, 1],
-                vel=self.arg.use_vel,
-                random_rot=self.arg.random_rot,
-                sort=True if self.arg.balanced_sampling else False,
-            )
+                        split='train',
+                        window_size=64,
+                        p_interval=[0.5, 1],
+                        vel=self.arg.use_vel,
+                        random_rot=self.arg.random_rot,
+                        sort=True if self.arg.balanced_sampling else False,
+                        )
             if self.arg.balanced_sampling:
                 sampler = BS(data_source=dt, args=self.arg)
                 shuffle = False
@@ -116,6 +122,35 @@ class Processor():
                 p_interval=[0.95],
                 vel=self.arg.use_vel
             ),
+            batch_size=self.arg.test_batch_size,
+            shuffle=False,
+            num_workers=self.arg.num_worker,
+            drop_last=False,
+            pin_memory=True,
+            worker_init_fn=init_seed)
+
+    def load_data(self):
+        Feeder = import_class(self.arg.feeder)
+        self.data_loader = dict()
+        if self.arg.phase == 'train':
+            if self.arg.balanced_sampling:
+                sampler = BS(data_source=dt, args=self.arg)
+                shuffle = False
+            else:
+                sampler = None
+                shuffle = True
+            self.data_loader['train'] = torch.utils.data.DataLoader(
+                dataset=Feeder(**self.arg.train_feeder_args),
+                sampler=sampler,
+                batch_size=self.arg.batch_size,
+                shuffle=shuffle,
+                num_workers=self.arg.num_worker,
+                drop_last=True,
+                pin_memory=True,
+                worker_init_fn=init_seed)
+
+        self.data_loader['test'] = torch.utils.data.DataLoader(
+            dataset=Feeder(**self.arg.test_feeder_args),
             batch_size=self.arg.test_batch_size,
             shuffle=False,
             num_workers=self.arg.num_worker,
@@ -263,7 +298,7 @@ class Processor():
             dis_z_prior_value.append(dis_z_prior.data.item())
 
             cls_loss = self.loss(y_hat, y)
-            loss = self.arg.lambda_2* mmd_loss + self.arg.lambda_1* l2_z_mean + cls_loss
+            loss = self.arg.lambda_2 * mmd_loss + self.arg.lambda_1 * l2_z_mean + cls_loss
             # backward
             self.optimizer.zero_grad()
             if self.arg.half:
@@ -290,14 +325,14 @@ class Processor():
             k: '{:02d}%'.format(int(round(v * 100 / sum(timer.values()))))
             for k, v in timer.items()
         }
-        self.print_log(f'\tTraining loss: {np.mean(loss_value):.4f}.  Training acc: {np.mean(acc_value)*100:.2f}%.')
+        self.print_log(f'\tTraining loss: {np.mean(loss_value):.4f}.  Training acc: {np.mean(acc_value) * 100:.2f}%.')
         self.print_log(f'\tTime consumption: [Data]{proportion["dataloader"]}, [Network]{proportion["model"]}')
 
         if save_model:
             state_dict = self.model.state_dict()
             weights = OrderedDict([[k.split('module.')[-1], v.cpu()] for k, v in state_dict.items()])
 
-            torch.save(weights, f'{self.arg.work_dir}/runs-{epoch+1}-{int(self.global_step)}.pt')
+            torch.save(weights, f'{self.arg.work_dir}/runs-{epoch + 1}-{int(self.global_step)}.pt')
 
     def eval(self, epoch, save_score=False, loader_name=['test'], save_z=False):
         self.model.eval()
@@ -332,7 +367,7 @@ class Processor():
                     cos_z_prior_value.append(cos_z_prior.data.item())
                     dis_z_prior_value.append(dis_z_prior.data.item())
                     cls_loss = self.loss(y_hat, y)
-                    loss = self.arg.lambda_2*mmd_loss + self.arg.lambda_1*l2_z_mean + cls_loss
+                    loss = self.arg.lambda_2 * mmd_loss + self.arg.lambda_1 * l2_z_mean + cls_loss
                     score_frag.append(y_hat.data.cpu().numpy())
                     loss_value.append(loss.data.item())
                     cls_loss_value.append(cls_loss.data.item())
@@ -354,7 +389,7 @@ class Processor():
             score_dict = dict(
                 zip(self.data_loader[ln].dataset.sample_name, score))
             self.print_log('\tMean {} loss of {} batches: {:4f}.'.format(
-                ln, self.arg.n_desired//self.arg.batch_size, np.mean(cls_loss_value)))
+                ln, self.arg.n_desired // self.arg.batch_size, np.mean(cls_loss_value)))
             for k in self.arg.show_topk:
                 self.print_log('\tTop{}: {:.2f}%'.format(
                     k, 100 * self.data_loader[ln].dataset.top_k(score, k)))
@@ -378,14 +413,17 @@ class Processor():
 
             if save_z:
                 z_list = np.concatenate(z_list)
-                np.savez(f'{self.arg.work_dir}/z_values.npz', z=z_list, z_prior=self.model.z_prior.cpu().numpy(), y=label_list)
+                np.savez(f'{self.arg.work_dir}/z_values.npz', z=z_list, z_prior=self.model.z_prior.cpu().numpy(),
+                         y=label_list)
 
     def start(self):
         if self.arg.phase == 'train':
             self.print_log('Parameters:\n{}\n'.format(str(vars(self.arg))))
             self.global_step = 0
+
             def count_parameters(model):
                 return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
             self.print_log(f'# Parameters: {count_parameters(self.model)}')
             for epoch in range(self.arg.start_epoch, self.arg.num_epoch):
                 save_model = (epoch + 1 == self.arg.num_epoch) and (epoch + 1 > self.arg.save_epoch)
@@ -396,14 +434,13 @@ class Processor():
                 self.eval(epoch, save_score=self.arg.save_score, loader_name=['test'])
 
             # test the best model
-            weights_path = glob.glob(os.path.join(self.arg.work_dir, 'runs-'+str(self.best_acc_epoch)+'*'))[0]
+            weights_path = glob.glob(os.path.join(self.arg.work_dir, 'runs-' + str(self.best_acc_epoch) + '*'))[0]
             weights = torch.load(weights_path)
             self.model.load_state_dict(weights)
 
             self.arg.print_log = False
             self.eval(epoch=0, save_score=True, loader_name=['test'])
             self.arg.print_log = True
-
 
             num_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
             self.print_log(f'Best accuracy: {self.best_acc}')
@@ -420,20 +457,33 @@ class Processor():
             if self.arg.weights is None:
                 raise ValueError('Please appoint --weights.')
             self.arg.print_log = False
-            self.print_log('Model:   {}.'.format(self.arg.model))
+            self.print_log('Model:   {}.'.format(self.arg.model_saved_name))
             self.print_log('Weights: {}.'.format(self.arg.weights))
             self.eval(epoch=0, save_score=self.arg.save_score, loader_name=['test'], save_z=True)
             self.print_log('Done.\n')
 
+
 def main():
     # parser arguments
     parser = get_parser()
+    # load arg form config file
+    p = parser.parse_args()
+    if p.config is not None:
+        with open(p.config, 'r') as f:
+            default_arg = yaml.safe_load(f)
+        key = vars(p).keys()
+        for k in default_arg.keys():
+            if k not in key:
+                print('WRONG ARG: {}'.format(k))
+                assert (k in key)
+        parser.set_defaults(**default_arg)
+
     arg = parser.parse_args()
-    arg.work_dir = f"results/{arg.dataset}_{arg.datacase}"
     init_seed(arg.seed)
     # execute process
     processor = Processor(arg)
     processor.start()
+
 
 if __name__ == '__main__':
     main()

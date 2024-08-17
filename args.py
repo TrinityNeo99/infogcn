@@ -1,4 +1,8 @@
+#  Copyright (c) 2024. IPCRC, Lab. Jiangnig Wei
+#  All rights reserved
+
 import argparse
+
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -8,9 +12,10 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Unsupported value encountered.')
 
+
 def get_parser():
     # parameter priority: command line > config > default
-    parser = argparse.ArgumentParser( description='Spatial Temporal Graph Convolution Network')
+    parser = argparse.ArgumentParser(description='Spatial Temporal Graph Convolution Network')
     parser.add_argument('--debug', type=str2bool, default=False, help='Debug mode; default false')
     parser.add_argument('--log_dir', type=str, default='.', help='')
     parser.add_argument('--model_saved_name', default='')
@@ -21,14 +26,14 @@ def get_parser():
     parser.add_argument('--num_point', type=int, default=25, help='')
     parser.add_argument('--num_person', type=int, default=2, help='')
     parser.add_argument('--num_class', type=int, default=60, help='')
-    parser.add_argument('--dataset', default='ntu', help='data loader will be used')
-    parser.add_argument('--datacase', default='CS', help='data loader will be used')
+    parser.add_argument('--dataset', default='ntu', help='data loader will be used', required=False)
+    parser.add_argument('--datacase', default='CS', help='data loader will be used', required=False)
     parser.add_argument('--use_vel', type=str2bool, default=False, help='')
-
 
     # processor
     parser.add_argument('--phase', default='train', help='must be train or test')
-    parser.add_argument('--save_score', type=str2bool, default=False, help='if ture, the classification score will be stored')
+    parser.add_argument('--save_score', type=str2bool, default=False,
+                        help='if ture, the classification score will be stored')
 
     # visulize and debug
     parser.add_argument('--seed', type=int, default=1, help='random seed for pytorch')
@@ -42,13 +47,15 @@ def get_parser():
     # feeder
     parser.add_argument('--feeder', default='feeders.feeder_ntu.Feeder', help='data loader will be used')
     parser.add_argument('--num_worker', type=int, default=8, help='the number of worker for data loader')
-    parser.add_argument('--balanced_sampling', type=str2bool, default=False, help='the number of worker for data loader')
+    parser.add_argument('--balanced_sampling', type=str2bool, default=False,
+                        help='the number of worker for data loader')
     parser.add_argument('--random_rot', type=str2bool, default=True, help='')
     parser.add_argument('--repeat', type=int, default=1, help='the number of repeat for data')
 
     # model
     parser.add_argument('--weights', default=None, help='the weights for network initialization')
-    parser.add_argument('--ignore_weights', type=str, default=[], nargs='+', help='the name of weights which will be ignored in the initialization')
+    parser.add_argument('--ignore_weights', type=str, default=[], nargs='+',
+                        help='the name of weights which will be ignored in the initialization')
     parser.add_argument('--n_heads', type=int, default=3, help='')
     parser.add_argument('--k', type=int, default=0, help='')
     parser.add_argument('--z_prior_gain', type=int, default=3, help='')
@@ -56,7 +63,8 @@ def get_parser():
 
     # optim
     parser.add_argument('--base_lr', type=float, default=0.1, help='initial learning rate')
-    parser.add_argument('--step', type=int, default=[90, 100], nargs='+', help='the epoch where optimizer reduce the learning rate')
+    parser.add_argument('--step', type=int, default=[90, 100], nargs='+',
+                        help='the epoch where optimizer reduce the learning rate')
     parser.add_argument('--optimizer', default='SGD', help='type of optimizer')
     parser.add_argument('--nesterov', type=str2bool, default=True, help='use nesterov or not')
     parser.add_argument('--batch_size', type=int, default=64, help='training batch size')
@@ -73,5 +81,24 @@ def get_parser():
     parser.add_argument('--half', type=str2bool, default=True, help='Use half-precision (FP16) training')
     parser.add_argument('--amp_opt_level', type=int, default=1, help='NVIDIA Apex AMP optimization level')
 
-    return parser
+    parser.add_argument(
+        '--work-dir',
+        default='./work_dir/temp',
+        help='the work folder for storing results')
 
+    parser.add_argument('-model_saved_name', default='')
+    parser.add_argument(
+        '--config',
+        default='./config/nturgbd-cross-view/test_bone.yaml',
+        help='path to the configuration file')
+
+    parser.add_argument(
+        '--train-feeder-args',
+        default=dict(),
+        help='the arguments of data loader for training')
+    parser.add_argument(
+        '--test-feeder-args',
+        default=dict(),
+        help='the arguments of data loader for test')
+
+    return parser
